@@ -1,0 +1,42 @@
+{
+  "name": "gemini-router",
+  "version": "1.0.0",
+  "description": "OpenAI-compatible HTTP server bridging to Gemini CLI",
+  "type": "module",
+  "main": "dist/plugin.js",
+  "exports": {
+    ".": {
+      "types": "./dist/plugin.d.ts",
+      "import": "./dist/plugin.js"
+    }
+  },
+  "bin": {
+    "gemini-router": "./dist/server.js",
+    "gemini-router-service": "./dist/service/index.js"
+  },
+  "files": ["dist/"],
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "node dist/server.js",
+    "build": "tsc -p tsconfig.build.json",
+    "prepublishOnly": "npm run build",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "hono": "^4.0.0",
+    "@hono/node-server": "^1.13.0",
+    "tsx": "^4.19.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@opencode-ai/plugin": "^0.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^2.0.0"
+  },
+  "optionalPeerDependencies": {
+    "@opencode-ai/plugin": "*"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

@@ -8,6 +8,7 @@ import { homedir } from "os";
 import { join } from "path";
 import { resolveCliPath } from "../cli-path.js";
 import { generateServiceUnit, type ServiceConfig } from "./template.js";
+import { getUserPort } from "../user-port.js";
 
 const SYSTEMD_USER_DIR = join(homedir(), ".config", "systemd", "user");
 const UNIT_FILE_NAME = "gemini-router.service";
@@ -72,7 +73,7 @@ export async function installService(options: InstallServiceOptions = {}): Promi
     return;
   }
 
-  const port = options.port ?? Number(process.env.PORT ?? "4789");
+  const port = options.port ?? Number(process.env.PORT ?? String(getUserPort()));
   const geminiCliPath = resolveCliPath();
   const nodePath = process.execPath;
   const workDir = process.env.GEMINI_WORKDIR ?? process.cwd();

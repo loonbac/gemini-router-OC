@@ -24,7 +24,7 @@
   "scripts": {
     "dev": "tsx watch src/server.ts",
     "start": "node dist/server.js",
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && node dist/post-build.js",
     "test": "vitest run"
   },
   "dependencies": {

@@ -7,8 +7,10 @@ Servidor HTTP compatible con la API de OpenAI que actúa como puente hacia Gemin
 ## ¿Qué hace esto?
 
 ```
-OpenCode → GeminiRouter plugin → router HTTP (puerto 4789) → Gemini CLI → Google
+OpenCode → GeminiRouter plugin → router HTTP (puerto dinámico) → Gemini CLI → Google
 ```
+
+Cada usuario obtiene un puerto único automáticamente. Esto permite que múltiples usuarios en la misma máquina usen el router simultáneamente sin colisiones.
 
 Cuando abrís OpenCode, el plugin detecta si el router ya está corriendo. Si no lo está, lo spawnea automáticamente. Cuando cerrás OpenCode, el router se detiene. **Cero configuración manual.**
 
@@ -79,62 +81,9 @@ export GEMINI_CLI_PATH="/ruta/a/tu/gemini"
 
 ### 5. Configurar OpenCode
 
-Abrí tu archivo de configuración de OpenCode:
+El paso 3 ya te mostró la configuración completa con tu puerto incluido. Copiá y pegá eso en tu `~/.config/opencode/opencode.json`.
 
-```bash
-# Configuración global
-nano ~/.config/opencode/opencode.json
-
-# O configuración del proyecto
-nano opencode.json
-```
-
-Agregá la ruta absoluta al plugin compilado en el array `plugin`:
-
-```json
-{
-  "plugin": [
-    "/home/tu-usuario/gemini-router-OC/dist/plugin.js"
-  ],
-  "provider": {
-    "gemini": {
-      "models": {
-        "gemini-3.1-pro-preview": {
-          "name": "Gemini 3.1 Pro Preview",
-          "limit": { "context": 1048576, "output": 65536 }
-        },
-        "gemini-3-flash-preview": {
-          "name": "Gemini 3 Flash Preview",
-          "limit": { "context": 1048576, "output": 65536 }
-        },
-        "gemini-3.1-flash-lite-preview": {
-          "name": "Gemini 3.1 Flash Lite Preview",
-          "limit": { "context": 1048576, "output": 65536 }
-        },
-        "gemini-2.5-pro": {
-          "name": "Gemini 2.5 Pro",
-          "limit": { "context": 1048576, "output": 65536 }
-        },
-        "gemini-2.5-flash": {
-          "name": "Gemini 2.5 Flash",
-          "limit": { "context": 1048576, "output": 65536 }
-        },
-        "gemini-2.5-flash-lite": {
-          "name": "Gemini 2.5 Flash Lite",
-          "limit": { "context": 1048576, "output": 65536 }
-        }
-      },
-      "name": "Gemini (via CLI)",
-      "npm": "@ai-sdk/openai-compatible",
-      "options": {
-        "baseURL": "http://127.0.0.1:4789/v1"
-      }
-    }
-  }
-}
-```
-
-> **Importante**: Reemplazá `/home/tu-usuario/` con tu ruta real. Usá `pwd` en la carpeta del proyecto si no estás seguro.
+> **Importante**: Si la ruta del plugin muestra `/home/tu-usuario/`, reemplazá eso con tu ruta real. Usá `pwd` en la carpeta del proyecto si no estás seguro.
 
 ### 6. Abrir OpenCode
 
@@ -143,7 +92,7 @@ opencode
 ```
 
 El plugin hará:
-1. Health check al puerto 4789
+1. Health check al puerto derivado del usuario
 2. Si no hay router corriendo → spawnea `node dist/server.js`
 3. Espera 2 segundos a que levante
 4. OpenCode ya puede usar Gemini como provider
@@ -217,8 +166,10 @@ El servicio se registra en `~/.config/systemd/user/gemini-router.service` y:
 | Variable | Default | Descripción |
 |----------|---------|-------------|
 | `GEMINI_CLI_PATH` | *(auto-detectado)* | Ruta absoluta al ejecutable `gemini` |
-| `PORT` | `4789` | Puerto del servidor HTTP |
-| `GEMINI_ROUTER_PORT` | `4789` | Puerto (alternativa, usa esta si existe) |
+| `GEMINI_ROUTER_PORT` | *(derivado dinámicamente)* | Forza un puerto específico (anula el puerto derivado) |
+| `PORT` | *(derivado dinámicamente)* | Puerto del servidor — fallback si `GEMINI_ROUTER_PORT` no está definido |
+
+El puerto es único por usuario (derivado del UID del SO), así que varios usuarios pueden usar el router simultáneamente sin colisiones.
 
 ## Tests
 

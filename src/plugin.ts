@@ -13,6 +13,7 @@ import { fileURLToPath } from "node:url"
 import { dirname, join } from "node:path"
 import { appendFileSync } from "node:fs"
 import { homedir } from "node:os"
+import { resolveEffectivePort } from "./user-port.js"
 
 const LOG = join(homedir(), "gemini-router-plugin.log")
 function log(msg: string) {
@@ -26,7 +27,7 @@ const SERVER_SCRIPT = join(__dirname, "server.js") // dist/server.js next to dis
 
 // ─── Configuration ───────────────────────────────────────────────────────────
 
-const ROUTER_PORT = Number(process.env.GEMINI_ROUTER_PORT ?? "4789")
+const ROUTER_PORT = resolveEffectivePort()
 const BASE_URL = `http://127.0.0.1:${ROUTER_PORT}/v1`
 const RESTART_DELAY_MS = 2000
 const MAX_RESTARTS = 5
@@ -74,6 +75,12 @@ function startRouter(): void {
     stdio: ["ignore", "pipe", "pipe"],
     env: { ...process.env, PORT: String(ROUTER_PORT), ROUTER_PARENT_PID: String(process.pid) },
   })
+
+  if (!child) {
+    log("Failed to spawn router: spawn returned null")
+    started = false
+    return
+  }
 
   child.stdout?.on("data", (d: Buffer) => log(`[router stdout] ${d.toString().trim()}`))
   child.stderr?.on("data", (d: Buffer) => log(`[router stderr] ${d.toString().trim()}`))

@@ -16,6 +16,7 @@ import {
   SUPPORTED_MODELS,
 } from "./format.js";
 import { SSEFormatter, NDJSONLineReader } from "./streaming.js";
+import { resolveEffectivePort } from "./user-port.js";
 
 // ---------------------------------------------------------------------------
 // App + env config
@@ -23,7 +24,7 @@ import { SSEFormatter, NDJSONLineReader } from "./streaming.js";
 
 const app = new Hono();
 
-const PORT = Number(process.env.PORT ?? "4789");
+const PORT = resolveEffectivePort();
 const DEFAULT_TIMEOUT_MS = resolveTimeout();
 
 // ---------------------------------------------------------------------------

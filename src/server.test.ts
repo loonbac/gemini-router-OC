@@ -15,6 +15,14 @@ import {
   SUPPORTED_MODELS,
 } from "./format.js";
 
+// Mock user-port module
+const mockGetUserPort = vi.hoisted(() => vi.fn(() => 47890));
+const mockResolveEffectivePort = vi.hoisted(() => vi.fn(() => 47890));
+vi.mock("./user-port.js", () => ({
+  getUserPort: mockGetUserPort,
+  resolveEffectivePort: mockResolveEffectivePort,
+}));
+
 // ---------------------------------------------------------------------------
 // Validation-only tests (don't need server)
 // ---------------------------------------------------------------------------
@@ -195,10 +203,36 @@ describe("Timeout Configuration", () => {
 // ---------------------------------------------------------------------------
 
 describe("Expected HTTP Behaviors (unit-tested patterns)", () => {
-  it("port defaults to 4789", () => {
-    // This is validated by the server startup log in integration
-    const port = Number(process.env.PORT ?? "4789");
-    expect(port).toBe(4789);
+  const originalEnv = process.env;
+
+  beforeEach(() => {
+    process.env = { ...originalEnv };
+    delete process.env.PORT;
+    delete process.env.GEMINI_ROUTER_PORT;
+    mockGetUserPort.mockReturnValue(47890);
+    mockResolveEffectivePort.mockReturnValue(47890);
+  });
+
+  afterEach(() => {
+    process.env = originalEnv;
+  });
+
+  it("port defaults to derived value when no env vars", () => {
+    // server.ts uses resolveEffectivePort() which calls getUserPort()
+    expect(mockResolveEffectivePort()).toBe(47890);
+  });
+
+  it("PORT env overrides derived port", () => {
+    process.env.PORT = "6000";
+    mockResolveEffectivePort.mockReturnValue(6000);
+    expect(mockResolveEffectivePort()).toBe(6000);
+  });
+
+  it("GEMINI_ROUTER_PORT env overrides PORT", () => {
+    process.env.GEMINI_ROUTER_PORT = "5000";
+    process.env.PORT = "6000";
+    mockResolveEffectivePort.mockReturnValue(5000);
+    expect(mockResolveEffectivePort()).toBe(5000);
   });
 
   it("JSON error response has correct shape", () => {

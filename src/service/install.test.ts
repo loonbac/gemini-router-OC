@@ -6,6 +6,12 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
+const mockGetUserPort = vi.hoisted(() => vi.fn<() => number>(() => 47890));
+
+vi.mock("../user-port.js", () => ({
+  getUserPort: mockGetUserPort,
+}));
+
 vi.mock("../cli-path.js", () => ({
   resolveCliPath: () => "/usr/local/bin/gemini",
 }));
@@ -45,6 +51,8 @@ describe("installService", () => {
     mockExecSync.mockReturnValue("");
     // Default: directory doesn't exist yet
     mockExistsSync.mockReturnValue(false);
+    // Reset getUserPort mock to return 47890
+    mockGetUserPort.mockReturnValue(47890);
   });
 
   afterEach(() => {
@@ -146,16 +154,25 @@ describe("installService", () => {
       expect(content).toContain("GEMINI_CLI_PATH=/usr/local/bin/gemini");
     });
 
-    it("sets default port 4789 in unit file", async () => {
+    it("sets derived default port in unit file when no env vars", async () => {
+      mockGetUserPort.mockReturnValue(47901);
       await installService();
       const content = mockWriteFileSync.mock.calls[0][1] as string;
-      expect(content).toContain("PORT=4789");
+      expect(content).toContain("PORT=47901");
     });
 
     it("uses custom port when provided", async () => {
       await installService({ port: 9000 });
       const content = mockWriteFileSync.mock.calls[0][1] as string;
       expect(content).toContain("PORT=9000");
+    });
+
+    it("uses PORT env as default when set", async () => {
+      process.env.PORT = "6000";
+      await installService();
+      const content = mockWriteFileSync.mock.calls[0][1] as string;
+      expect(content).toContain("PORT=6000");
+      delete process.env.PORT;
     });
   });
 

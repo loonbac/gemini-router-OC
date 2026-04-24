@@ -17,9 +17,11 @@ const mockChild = {
   on: vi.fn(),
   kill: mockKill,
   killed: false,
+  stdout: { on: vi.fn() },
+  stderr: { on: vi.fn() },
 }
 
-// Set up mock once at module level
+// Mock child_process module
 vi.mock("node:child_process", () => ({
   spawn: mockSpawn,
 }))
@@ -64,6 +66,10 @@ describe("Plugin Interface", () => {
     mockKill.mockReset()
     mockChild.on.mockReset()
     mockChild.on.mockReturnValue(mockChild)
+    ;(mockChild.stdout as any).on.mockReset()
+    ;(mockChild.stderr as any).on.mockReset()
+    ;(mockChild.stdout as any).on.mockReturnValue(mockChild.stdout)
+    ;(mockChild.stderr as any).on.mockReturnValue(mockChild.stderr)
   })
 
   it("returns an object with event handler when router is running", async () => {
@@ -169,5 +175,70 @@ describe("isRunning logic", () => {
       result = false
     }
     expect(result).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Dynamic port integration tests
+// ---------------------------------------------------------------------------
+
+// Hoisted mock values — these are module-level and control the user-port mock
+const mockResolveEffectivePort = vi.fn(() => 47890)
+const mockGetUserPort = vi.fn(() => 47890)
+
+vi.mock("./user-port.js", () => ({
+  getUserPort: mockGetUserPort,
+  resolveEffectivePort: mockResolveEffectivePort,
+}))
+
+describe("Dynamic port", () => {
+  beforeEach(() => {
+    mockSpawn.mockReset()
+    mockKill.mockReset()
+    mockChild.on.mockReset()
+    mockChild.on.mockReturnValue(mockChild)
+    ;(mockChild.stdout as any).on.mockReset()
+    ;(mockChild.stderr as any).on.mockReset()
+    ;(mockChild.stdout as any).on.mockReturnValue(mockChild.stdout)
+    ;(mockChild.stderr as any).on.mockReturnValue(mockChild.stderr)
+    delete process.env.GEMINI_ROUTER_PORT
+    delete process.env.PORT
+    mockResolveEffectivePort.mockReturnValue(47890)
+    mockGetUserPort.mockReturnValue(47890)
+  })
+
+  it("when no env vars, spawn uses resolved port from user-port module", async () => {
+    mockResolveEffectivePort.mockReturnValue(47901)
+
+    // Fetch returns false so boot proceeds to startRouter
+    const mockFetch = vi.fn().mockResolvedValue({ ok: false })
+    vi.stubGlobal("fetch", mockFetch)
+    mockSpawn.mockReturnValue(mockChild)
+
+    await getFreshModule()
+
+    // PORT env passed to spawn should be 47901
+    const spawnCall = mockSpawn.mock.calls[0]
+    const env = spawnCall?.[2]?.env as Record<string, string> | undefined
+    expect(env?.PORT).toBe("47901")
+
+    vi.stubGlobal("fetch", undefined as any)
+  })
+
+  it("GEMINI_ROUTER_PORT env overrides derived port in spawn", async () => {
+    process.env.GEMINI_ROUTER_PORT = "5000"
+    mockResolveEffectivePort.mockReturnValue(5000)
+
+    const mockFetch = vi.fn().mockResolvedValue({ ok: false })
+    vi.stubGlobal("fetch", mockFetch)
+    mockSpawn.mockReturnValue(mockChild)
+
+    await getFreshModule()
+
+    const spawnCall = mockSpawn.mock.calls[0]
+    const env = spawnCall?.[2]?.env as Record<string, string> | undefined
+    expect(env?.PORT).toBe("5000")
+
+    vi.stubGlobal("fetch", undefined as any)
   })
 })

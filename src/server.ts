@@ -245,6 +245,14 @@ async function shutdown() {
 process.on("SIGTERM", async () => { await shutdown(); process.exit(0); });
 process.on("SIGINT", async () => { await shutdown(); process.exit(0); });
 
+// Auto-shutdown when parent process dies
+const parentPid = process.env.ROUTER_PARENT_PID;
+if (parentPid) {
+  setInterval(() => {
+    try { process.kill(Number(parentPid), 0); } catch { process.exit(0); }
+  }, 3000);
+}
+
 // ---------------------------------------------------------------------------
 // Start — handle EADDRINUSE gracefully
 // ---------------------------------------------------------------------------

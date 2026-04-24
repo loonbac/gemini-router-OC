@@ -1,7 +1,13 @@
 {
   "name": "gemini-router",
   "version": "1.0.0",
-  "description": "OpenAI-compatible HTTP server bridging to Gemini CLI",
+  "description": "Servidor HTTP compatible con OpenAI que puentea a Gemini CLI. Plugin para OpenCode.",
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "author": "Loonbac <https://github.com/loonbac>",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/loonbac/gemini-router-OC.git"
+  },
   "type": "module",
   "main": "dist/plugin.js",
   "exports": {
@@ -19,7 +25,6 @@
     "dev": "tsx watch src/server.ts",
     "start": "node dist/server.js",
     "build": "tsc -p tsconfig.build.json",
-    "prepublishOnly": "npm run build",
     "test": "vitest run"
   },
   "dependencies": {

@@ -107,6 +107,35 @@ export interface BridgeConfig {
 }
 
 // ---------------------------------------------------------------------------
+// Supported models
+// ---------------------------------------------------------------------------
+
+export const SUPPORTED_MODELS = [
+  "gemini-3.1-pro-preview",
+  "gemini-3-flash-preview",
+  "gemini-3.1-flash-lite-preview",
+  "gemini-2.5-pro",
+  "gemini-2.5-flash",
+  "gemini-2.5-flash-lite",
+] as const;
+
+export type SupportedModel = (typeof SUPPORTED_MODELS)[number];
+
+/**
+ * Normalizes a model string by trimming whitespace and validating against supported list.
+ * @throws Error with descriptive message if model is not supported
+ */
+export function normalizeModel(model: string): string {
+  const trimmed = model.trim();
+  if (SUPPORTED_MODELS.includes(trimmed as SupportedModel)) {
+    return trimmed;
+  }
+  throw new Error(
+    `Unsupported model: "${trimmed}". Supported models: ${SUPPORTED_MODELS.join(", ")}`
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Validation helpers
 // ---------------------------------------------------------------------------
 
@@ -119,6 +148,13 @@ export function validateChatRequest(body: unknown): { ok: true; data: OpenAIChat
 
   if (typeof b.model !== "string" || b.model.trim() === "") {
     return { ok: false, error: "Missing or invalid 'model' field" };
+  }
+
+  let normalizedModel: string;
+  try {
+    normalizedModel = normalizeModel(b.model as string);
+  } catch (err) {
+    return { ok: false, error: (err as Error).message };
   }
 
   if (!Array.isArray(b.messages) || b.messages.length === 0) {
@@ -141,7 +177,7 @@ export function validateChatRequest(body: unknown): { ok: true; data: OpenAIChat
   return {
     ok: true,
     data: {
-      model: (b.model as string).trim(),
+      model: normalizedModel,
       messages: b.messages as OpenAIMessage[],
       stream: b.stream === true,
       temperature: typeof b.temperature === "number" ? b.temperature : undefined,

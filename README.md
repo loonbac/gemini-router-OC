@@ -12,6 +12,19 @@ OpenCode → GeminiRouter plugin → router HTTP (puerto 4789) → Gemini CLI �
 
 Cuando abrís OpenCode, el plugin detecta si el router ya está corriendo. Si no lo está, lo spawnea automáticamente. Cuando cerrás OpenCode, el router se detiene. **Cero configuración manual.**
 
+## Modelos disponibles
+
+El router soporta los 6 modelos de la suscripción Gemini Pro:
+
+| Modelo | Descripción |
+|--------|-------------|
+| `gemini-3.1-pro-preview` | Gemini 3.1 Pro Preview — mejor para tareas complejas |
+| `gemini-3-flash-preview` | Gemini 3 Flash Preview — rápido y eficiente |
+| `gemini-3.1-flash-lite-preview` | Gemini 3.1 Flash Lite Preview — optimización de recursos |
+| `gemini-2.5-pro` | Gemini 2.5 Pro — reasoning avanzado |
+| `gemini-2.5-flash` | Gemini 2.5 Flash — balance velocidad/costo |
+| `gemini-2.5-flash-lite` | Gemini 2.5 Flash Lite — muy económico |
+
 ## Requisitos previos
 
 | Requisito | Cómo verificar | Cómo instalar |

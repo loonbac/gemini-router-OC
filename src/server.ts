@@ -13,6 +13,7 @@ import {
   openaiToGemini,
   geminiToOpenAI,
   type OpenAIChatRequest,
+  SUPPORTED_MODELS,
 } from "./format.js";
 import { SSEFormatter, NDJSONLineReader } from "./streaming.js";
 
@@ -31,6 +32,22 @@ const DEFAULT_TIMEOUT_MS = resolveTimeout();
 
 app.get("/health", (c: Context) => {
   return c.json({ status: "ok", port: PORT });
+});
+
+// ---------------------------------------------------------------------------
+// GET /v1/models — OpenAI-compatible models list
+// ---------------------------------------------------------------------------
+
+app.get("/v1/models", (c: Context) => {
+  return c.json({
+    object: "list",
+    data: SUPPORTED_MODELS.map((id) => ({
+      id,
+      object: "model",
+      created: Math.floor(Date.now() / 1000),
+      owned_by: "google",
+    })),
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -7,17 +7,38 @@ import {
   validateChatRequest,
   openaiToGemini,
   geminiToOpenAI,
+  normalizeModel,
+  SUPPORTED_MODELS,
   type OpenAIChatRequest,
   type GeminiJSONOutput,
 } from "./format.js";
 
+describe("normalizeModel", () => {
+  it("returns model ID as-is for valid supported models", () => {
+    for (const model of SUPPORTED_MODELS) {
+      expect(normalizeModel(model)).toBe(model);
+    }
+  });
+
+  it("trims whitespace", () => {
+    expect(normalizeModel("  gemini-2.5-flash  ")).toBe("gemini-2.5-flash");
+    expect(normalizeModel("\tgemini-2.5-pro\n")).toBe("gemini-2.5-pro");
+  });
+
+  it("throws descriptive error for invalid model", () => {
+    expect(() => normalizeModel("invalid-model")).toThrow(/Unsupported model/);
+    expect(() => normalizeModel("invalid-model")).toThrow(/invalid-model/);
+    expect(() => normalizeModel("invalid-model")).toThrow(/gemini-3.1-pro-preview/);
+  });
+});
+
 describe("validateChatRequest", () => {
   it("returns ok for valid request", () => {
-    const req = { model: "gemini-3.1-pro", messages: [{ role: "user", content: "hi" }] };
+    const req = { model: "gemini-3.1-pro-preview", messages: [{ role: "user", content: "hi" }] };
     const result = validateChatRequest(req);
     expect(result.ok).toBe(true);
     if (result.ok) {
-      expect(result.data.model).toBe("gemini-3.1-pro");
+      expect(result.data.model).toBe("gemini-3.1-pro-preview");
       expect(result.data.messages).toHaveLength(1);
     }
   });
@@ -26,21 +47,39 @@ describe("validateChatRequest", () => {
     const req = { messages: [{ role: "user", content: "hi" }] };
     const result = validateChatRequest(req);
     expect(result.ok).toBe(false);
-    expect(result.error).toContain("model");
+    if (!result.ok) expect(result.error).toContain("model");
   });
 
   it("rejects empty messages", () => {
-    const req = { model: "gemini", messages: [] };
+    const req = { model: "gemini-2.5-flash", messages: [] };
     const result = validateChatRequest(req);
     expect(result.ok).toBe(false);
-    expect(result.error).toContain("messages");
+    if (!result.ok) expect(result.error).toContain("messages");
   });
 
   it("rejects invalid role", () => {
-    const req = { model: "gemini", messages: [{ role: "jefe", content: "hi" }] };
+    const req = { model: "gemini-2.5-flash", messages: [{ role: "jefe", content: "hi" }] };
     const result = validateChatRequest(req);
     expect(result.ok).toBe(false);
-    expect(result.error).toContain("role");
+    if (!result.ok) expect(result.error).toContain("role");
+  });
+
+  it("rejects unsupported model", () => {
+    const req = { model: "unknown-model", messages: [{ role: "user", content: "hi" }] };
+    const result = validateChatRequest(req);
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error).toContain("Unsupported model");
+      expect(result.error).toContain("unknown-model");
+    }
+  });
+
+  it("accepts all 6 supported models", () => {
+    for (const model of SUPPORTED_MODELS) {
+      const req = { model, messages: [{ role: "user", content: "hi" }] };
+      const result = validateChatRequest(req);
+      expect(result.ok).toBe(true);
+    }
   });
 });
 
@@ -127,7 +166,7 @@ describe("geminiToOpenAI", () => {
   });
 
   it("handles missing session_id gracefully", () => {
-    const geminiOut: GeminiJSONOutput = { response: "Hi" };
+    const geminiOut: GeminiJSONOutput = { session_id: "abc", response: "Hi" };
     const result = geminiToOpenAI(geminiOut, "gemini");
     expect(result.id).toMatch(/^chatcmpl-/);
     expect(result.choices[0].message.content).toBe("Hi");

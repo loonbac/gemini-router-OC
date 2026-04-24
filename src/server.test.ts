@@ -12,6 +12,7 @@ import {
   validateChatRequest,
   openaiToGemini,
   geminiToOpenAI,
+  SUPPORTED_MODELS,
 } from "./format.js";
 
 // ---------------------------------------------------------------------------
@@ -21,7 +22,7 @@ import {
 describe("Request Validation Integration", () => {
   it("validateChatRequest accepts stream:true", () => {
     const req = {
-      model: "gemini-3.1-pro",
+      model: "gemini-3.1-pro-preview",
       messages: [{ role: "user", content: "hi" }],
       stream: true,
     };
@@ -32,7 +33,7 @@ describe("Request Validation Integration", () => {
 
   it("validateChatRequest accepts stream:false", () => {
     const req = {
-      model: "gemini-3.1-pro",
+      model: "gemini-2.5-flash",
       messages: [{ role: "user", content: "hi" }],
       stream: false,
     };
@@ -43,7 +44,7 @@ describe("Request Validation Integration", () => {
 
   it("rejects messages with missing content", () => {
     const req = {
-      model: "gemini",
+      model: "gemini-2.5-pro",
       messages: [{ role: "user" }],
     };
     const result = validateChatRequest(req);
@@ -52,7 +53,7 @@ describe("Request Validation Integration", () => {
 
   it("rejects non-array messages", () => {
     const req = {
-      model: "gemini",
+      model: "gemini-2.5-flash-lite",
       messages: "not an array",
     };
     const result = validateChatRequest(req);
@@ -136,6 +137,37 @@ describe("Response Shape Integration", () => {
 // Timeout resolution
 // ---------------------------------------------------------------------------
 
+describe("GET /v1/models endpoint", () => {
+  it("returns all 6 supported models", () => {
+    const modelsResponse = {
+      object: "list",
+      data: SUPPORTED_MODELS.map((id) => ({
+        id,
+        object: "model",
+        created: expect.any(Number),
+        owned_by: "google",
+      })),
+    };
+    expect(modelsResponse.data).toHaveLength(6);
+    expect(modelsResponse.object).toBe("list");
+    for (const model of SUPPORTED_MODELS) {
+      expect(modelsResponse.data.some((m: { id: string }) => m.id === model)).toBe(true);
+    }
+  });
+
+  it("models have correct OpenAI format", () => {
+    const modelEntry = {
+      id: "gemini-2.5-flash",
+      object: "model",
+      created: Math.floor(Date.now() / 1000),
+      owned_by: "google",
+    };
+    expect(modelEntry.object).toBe("model");
+    expect(modelEntry.owned_by).toBe("google");
+    expect(typeof modelEntry.created).toBe("number");
+  });
+});
+
 describe("Timeout Configuration", () => {
   const originalEnv = process.env;
 
@@ -186,12 +218,12 @@ describe("Expected HTTP Behaviors (unit-tested patterns)", () => {
     // but we can verify the config interface works
     const config = {
       prompt: "test prompt",
-      model: "gemini-3.1-pro",
+      model: "gemini-2.5-flash",
       stream: false,
       timeoutMs: 120_000,
     };
     expect(config.prompt).toBe("test prompt");
-    expect(config.model).toBe("gemini-3.1-pro");
+    expect(config.model).toBe("gemini-2.5-flash");
     expect(config.stream).toBe(false);
     expect(config.timeoutMs).toBe(120_000);
   });

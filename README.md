@@ -257,4 +257,4 @@ Para uso comercial, contactá al autor.
 
 ## Autor
 
-**Loonbac** — [github.com/loonbac](https://github.com/loonbac)
+**Loonbac21** — [github.com/loonbac](https://github.com/loonbac)

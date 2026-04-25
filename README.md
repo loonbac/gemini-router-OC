@@ -32,7 +32,7 @@ El router soporta los 6 modelos de la suscripción Gemini Pro:
 | Requisito | Cómo verificar | Cómo instalar |
 |-----------|---------------|---------------|
 | **Node.js ≥ 20** | `node --version` | [nodejs.org](https://nodejs.org) |
-| **Gemini CLI** | `gemini --version` | `npm install -g @anthropic-ai/claude-code` |
+| **Gemini CLI** | `gemini --version` | `npm install -g @google/gemini-cli` |
 | **Gemini CLI autenticado** | Abrir `gemini` una vez | Te guía el primer uso |
 | **OpenCode** | `opencode --version` | [opencode.ai](https://opencode.ai) |
 

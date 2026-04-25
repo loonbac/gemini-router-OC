@@ -155,10 +155,13 @@ describe("installService", () => {
     });
 
     it("sets derived default port in unit file when no env vars", async () => {
+      const originalPort = process.env.PORT;
+      delete process.env.PORT;
       mockGetUserPort.mockReturnValue(47901);
       await installService();
       const content = mockWriteFileSync.mock.calls[0][1] as string;
       expect(content).toContain("PORT=47901");
+      process.env.PORT = originalPort;
     });
 
     it("uses custom port when provided", async () => {

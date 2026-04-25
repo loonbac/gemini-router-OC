@@ -72,7 +72,7 @@ function doResolve(): CliResolutionResult {
     "gemini CLI not found. Please install it first:",
     "",
     "  # Via npm (global)",
-    "  npm install -g @anthropic-ai/gemini",
+    "  npm install -g @google/gemini-cli",
     "",
     "  # Or set the path manually:",
     `  export GEMINI_CLI_PATH="/path/to/your/gemini"`,

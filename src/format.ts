@@ -170,7 +170,14 @@ export function validateChatRequest(body: unknown): { ok: true; data: OpenAIChat
       return { ok: false, error: "Message role must be 'system', 'user', or 'assistant'" };
     }
     if (typeof m.content !== "string") {
-      return { ok: false, error: "Message content must be a string" };
+      if (Array.isArray(m.content)) {
+        m.content = m.content
+          .filter((part: unknown) => typeof part === "object" && part !== null && "type" in (part as Record<string, unknown>) && (part as Record<string, unknown>).type === "text")
+          .map((part: unknown) => ((part as Record<string, unknown>).text as string))
+          .join("\n");
+      } else {
+        return { ok: false, error: "Message content must be a string or array" };
+      }
     }
   }
 

@@ -6,6 +6,7 @@
  */
 
 import { execFile, spawn, type ChildProcess } from "node:child_process";
+import { StringDecoder } from "node:string_decoder";
 import { resolveCliPath } from "./cli-path.js";
 
 const GEMINI_WORKDIR = process.env.GEMINI_WORKDIR ?? process.cwd();
@@ -62,8 +63,8 @@ export function spawnBridge(
 
   let killed = false;
 
-  let stdoutData = "";
-  let stderrData = "";
+  const stdoutBuffers: Buffer[] = [];
+  const stderrBuffers: Buffer[] = [];
 
   const child = execFile(cliPath, args, {
     cwd: GEMINI_WORKDIR,
@@ -72,13 +73,15 @@ export function spawnBridge(
     env: { ...process.env },
   });
 
-  // Collect output via streams
-  child.stdout?.on("data", (d: Buffer) => { stdoutData += d.toString(); });
-  child.stderr?.on("data", (d: Buffer) => { stderrData += d.toString(); });
+  // Collect output as Buffer arrays (safe for multi-byte UTF-8)
+  child.stdout?.on("data", (d: Buffer) => { stdoutBuffers.push(d); });
+  child.stderr?.on("data", (d: Buffer) => { stderrBuffers.push(d); });
 
   const kill = () => {
     if (killed) return;
     killed = true;
+    child.stdout?.removeAllListeners("data");
+    child.stderr?.removeAllListeners("data");
     try { child.kill("SIGTERM"); } catch {}
     setTimeout(() => {
       try { child.kill("SIGKILL"); } catch {}
@@ -87,14 +90,19 @@ export function spawnBridge(
 
   const promise = new Promise<BridgeResult>((resolve, reject) => {
     child.on("close", (code) => {
+      // Clean up listeners before resolving
+      child.stdout?.removeAllListeners("data");
+      child.stderr?.removeAllListeners("data");
       resolve({
-        stdout: stdoutData,
-        stderr: stderrData,
+        stdout: Buffer.concat(stdoutBuffers).toString("utf-8"),
+        stderr: Buffer.concat(stderrBuffers).toString("utf-8"),
         exitCode: code,
       });
     });
 
     child.on("error", (err) => {
+      child.stdout?.removeAllListeners("data");
+      child.stderr?.removeAllListeners("data");
       if (err.message.includes("ETIMEDOUT") || err.message.includes("timed out")) {
         reject({ kind: "timeout", message: `Gemini CLI timed out after ${timeoutMs}ms` });
       } else {
@@ -130,11 +138,28 @@ export function spawnStreamBridge(config: StreamBridgeConfig): () => void {
     env: { ...process.env },
   });
 
+  // StringDecoder handles multi-byte UTF-8 chunk boundary correctly
+  const stdoutDecoder = new StringDecoder("utf-8");
+  const stderrDecoder = new StringDecoder("utf-8");
+
+  // Escalation timer: config.timeoutMs + 5000ms grace period
+  const effectiveTimeout = config.timeoutMs || resolveTimeout();
   let escalationTimer: NodeJS.Timeout | null = setTimeout(() => {
     if (!settled) {
       try { child.kill("SIGKILL"); } catch {}
     }
-  }, 10_000);
+  }, effectiveTimeout + 5000);
+
+  function cleanupListeners() {
+    child.stdout?.removeAllListeners("data");
+    child.stdout?.removeAllListeners("error");
+    child.stdout?.removeAllListeners("close");
+    child.stderr?.removeAllListeners("data");
+    child.stderr?.removeAllListeners("error");
+    child.stderr?.removeAllListeners("close");
+    child.removeAllListeners("error");
+    child.removeAllListeners("close");
+  }
 
   function kill(sig: "SIGTERM" | "SIGKILL" = "SIGTERM") {
     if (settled) return;
@@ -143,15 +168,16 @@ export function spawnStreamBridge(config: StreamBridgeConfig): () => void {
       clearTimeout(escalationTimer);
       escalationTimer = null;
     }
+    cleanupListeners();
     try { child.kill(sig); } catch {}
   }
 
   child.stdout?.on("data", (chunk: Buffer) => {
-    config.onStdout(chunk.toString());
+    config.onStdout(stdoutDecoder.write(chunk));
   });
 
   child.stderr?.on("data", (chunk: Buffer) => {
-    config.onStderr(chunk.toString());
+    config.onStderr(stderrDecoder.write(chunk));
   });
 
   child.on("error", (err: Error) => {
@@ -161,6 +187,7 @@ export function spawnStreamBridge(config: StreamBridgeConfig): () => void {
         clearTimeout(escalationTimer);
         escalationTimer = null;
       }
+      cleanupListeners();
       config.onError({ kind: "spawn", message: `Failed to spawn gemini CLI: ${err.message}` });
     }
   });
@@ -172,6 +199,7 @@ export function spawnStreamBridge(config: StreamBridgeConfig): () => void {
         clearTimeout(escalationTimer);
         escalationTimer = null;
       }
+      cleanupListeners();
       config.onClose(code);
     }
   });

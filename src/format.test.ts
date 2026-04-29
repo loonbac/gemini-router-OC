@@ -11,6 +11,7 @@ import {
   SUPPORTED_MODELS,
   type OpenAIChatRequest,
   type GeminiJSONOutput,
+  type OpenAIStreamChunk,
 } from "./format.js";
 
 describe("normalizeModel", () => {
@@ -170,5 +171,53 @@ describe("geminiToOpenAI", () => {
     const result = geminiToOpenAI(geminiOut, "gemini");
     expect(result.id).toMatch(/^chatcmpl-/);
     expect(result.choices[0].message.content).toBe("Hi");
+  });
+});
+
+describe("OpenAIStreamChunk", () => {
+  it("allows reasoning_content in delta", () => {
+    const chunk: OpenAIStreamChunk = {
+      id: "chatcmpl-abc",
+      object: "chat.completion.chunk",
+      created: 1234567890,
+      model: "gemini-2.5-pro",
+      choices: [{
+        index: 0,
+        delta: { reasoning_content: "I am thinking about this problem..." },
+        finish_reason: null,
+      }],
+    };
+    expect(chunk.choices[0].delta.reasoning_content).toBe("I am thinking about this problem...");
+  });
+
+  it("allows both content and reasoning_content in delta", () => {
+    const chunk: OpenAIStreamChunk = {
+      id: "chatcmpl-xyz",
+      object: "chat.completion.chunk",
+      created: 1234567890,
+      model: "gemini-2.5-pro",
+      choices: [{
+        index: 0,
+        delta: { content: "Hello", reasoning_content: "Thinking step" },
+        finish_reason: null,
+      }],
+    };
+    expect(chunk.choices[0].delta.content).toBe("Hello");
+    expect(chunk.choices[0].delta.reasoning_content).toBe("Thinking step");
+  });
+
+  it("delta without reasoning_content is still valid", () => {
+    const chunk: OpenAIStreamChunk = {
+      id: "chatcmpl-def",
+      object: "chat.completion.chunk",
+      created: 1234567890,
+      model: "gemini-2.5-pro",
+      choices: [{
+        index: 0,
+        delta: { content: "Just content" },
+        finish_reason: null,
+      }],
+    };
+    expect(chunk.choices[0].delta.reasoning_content).toBeUndefined();
   });
 });

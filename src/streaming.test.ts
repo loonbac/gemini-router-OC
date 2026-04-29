@@ -3,7 +3,7 @@
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
-import { SSEFormatter, NDJSONLineReader, parseNDJSONLine } from "./streaming.js";
+import { SSEFormatter, NDJSONLineReader, parseNDJSONLine, formatSSEChunk } from "./streaming.js";
 
 describe("parseNDJSONLine", () => {
   it("parses init event", () => {
@@ -141,5 +141,57 @@ describe("SSEFormatter", () => {
     // non-delta first message → role chunk + stop
     expect(result).toContain('"content":"I am the response"');
     expect(result).toContain('"finish_reason":"stop"');
+  });
+
+  it("emits SSE chunk with reasoning_content for type: thought event", () => {
+    const thoughtLine = '{"type":"thought","timestamp":"123","content":"I need to analyze this"}';
+    const result = formatter.processLine(thoughtLine);
+    expect(result).not.toBeNull();
+    expect(result).toContain('"reasoning_content":"I need to analyze this"');
+  });
+
+  it("emits empty reasoning_content for thought event with empty content", () => {
+    const thoughtLine = '{"type":"thought","timestamp":"123","content":""}';
+    const result = formatter.processLine(thoughtLine);
+    // Empty content should still emit (the thought event exists, just no content)
+    expect(result).not.toBeNull();
+  });
+
+  it("emits SSE chunk with reasoning_content for role: thought message", () => {
+    const thoughtLine = '{"type":"message","timestamp":"123","role":"thought","content":"My reasoning here","delta":true}';
+    const result = formatter.processLine(thoughtLine);
+    expect(result).not.toBeNull();
+    expect(result).toContain('"reasoning_content":"My reasoning here"');
+  });
+
+  it("does not set role in delta for thought messages", () => {
+    const thoughtLine = '{"type":"message","timestamp":"123","role":"thought","content":"thinking","delta":true}';
+    const result = formatter.processLine(thoughtLine);
+    expect(result).not.toBeNull();
+    // Thought messages should NOT get "role":"assistant" in the delta
+    // They should only have reasoning_content
+    expect(result).not.toContain('"role":"assistant"');
+  });
+});
+
+describe("formatSSEChunk", () => {
+  it("includes reasoning_content when option is provided", () => {
+    const result = formatSSEChunk("chatcmpl-abc", "gemini-2.5-pro", "", {
+      reasoning_content: "I am thinking about this...",
+    });
+    expect(result).toContain('"reasoning_content":"I am thinking about this..."');
+  });
+
+  it("includes both content and reasoning_content when both provided", () => {
+    const result = formatSSEChunk("chatcmpl-abc", "gemini-2.5-pro", "Hello", {
+      reasoning_content: "My thought process",
+    });
+    expect(result).toContain('"content":"Hello"');
+    expect(result).toContain('"reasoning_content":"My thought process"');
+  });
+
+  it("omits reasoning_content when not provided", () => {
+    const result = formatSSEChunk("chatcmpl-abc", "gemini-2.5-pro", "Hello");
+    expect(result).not.toContain("reasoning_content");
   });
 });

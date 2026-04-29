@@ -51,7 +51,7 @@ export interface OpenAIStreamChunk {
   model: string;
   choices: Array<{
     index: 0;
-    delta: { content?: string; role?: string };
+    delta: { content?: string; role?: string; reasoning_content?: string };
     finish_reason: null | "stop";
   }>;
 }
@@ -92,6 +92,7 @@ export interface GeminiJSONOutput {
 
 export type GeminiNDJSONLine =
   | { type: "init"; timestamp: string; session_id: string; model: string }
+  | { type: "thought"; timestamp: string; content: string }
   | { type: "message"; timestamp: string; role?: string; content: string; delta: boolean }
   | { type: "result"; timestamp: string; status: "success" | "error"; session_id: string; response?: string; stats?: GeminiJSONOutput["stats"] };
 
@@ -107,17 +108,12 @@ export interface BridgeConfig {
 }
 
 // ---------------------------------------------------------------------------
-// Supported models
+// Supported models — imported from centralized registry
 // ---------------------------------------------------------------------------
 
-export const SUPPORTED_MODELS = [
-  "gemini-3.1-pro-preview",
-  "gemini-3-flash-preview",
-  "gemini-3.1-flash-lite-preview",
-  "gemini-2.5-pro",
-  "gemini-2.5-flash",
-  "gemini-2.5-flash-lite",
-] as const;
+import { modelsRegistry, type ModelMetadata } from "./models-data.js";
+
+export const SUPPORTED_MODELS = modelsRegistry.map((m) => m.id);
 
 export type SupportedModel = (typeof SUPPORTED_MODELS)[number];
 

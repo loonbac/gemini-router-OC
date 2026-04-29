@@ -28,9 +28,9 @@ export function formatSSEChunk(
   id: string,
   model: string,
   content: string,
-  options: { role?: string; isFinal?: boolean } = {},
+  options: { role?: string; isFinal?: boolean; reasoning_content?: string } = {},
 ): string {
-  const { role, isFinal = false } = options;
+  const { role, isFinal = false, reasoning_content } = options;
   const finishReason: null | "stop" = isFinal ? "stop" : null;
 
   // Build delta — role only on the first chunk (when isFinal is false and role provided)
@@ -40,6 +40,9 @@ export function formatSSEChunk(
   }
   if (content) {
     delta.content = content;
+  }
+  if (reasoning_content) {
+    delta.reasoning_content = reasoning_content;
   }
 
   const chunk: object = {
@@ -112,7 +115,22 @@ export class SSEFormatter {
         // type: "init" — skip silently, no SSE output
         return null;
 
+  case "thought": {
+    const thought = line.content ?? "";
+    return formatSSEChunk(this.id, this.model, "", {
+      reasoning_content: thought,
+    });
+  }
+
       case "message": {
+    // Handle thoughts if they arrive as messages with role 'thought'
+    if (line.role === "thought") {
+      const thought = line.content ?? "";
+      return formatSSEChunk(this.id, this.model, "", {
+        reasoning_content: thought,
+      });
+    }
+
         // Skip user messages — only emit assistant messages
         if (line.role === "user") return null;
 
@@ -147,6 +165,13 @@ export class SSEFormatter {
       default:
         return null;
     }
+  }
+
+  /**
+   * Emit a keep-alive comment to prevent connection timeouts.
+   */
+  keepAlive(): string {
+    return ": keep-alive\n\n";
   }
 
   /**

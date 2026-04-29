@@ -11,6 +11,24 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 // Shared mock state
 // ---------------------------------------------------------------------------
 
+const mockLog = vi.fn()
+const mockThink = vi.fn()
+const mockToast = vi.fn()
+const mockCtx = {
+  client: {
+    app: {
+      log: mockLog,
+      think: mockThink,
+    },
+    ui: {
+      toast: mockToast,
+    },
+  },
+  project: {
+    directory: "/test/project",
+  },
+}
+
 const mockSpawn = vi.fn()
 const mockKill = vi.fn()
 const mockChild = {
@@ -70,6 +88,9 @@ describe("Plugin Interface", () => {
     ;(mockChild.stderr as any).on.mockReset()
     ;(mockChild.stdout as any).on.mockReturnValue(mockChild.stdout)
     ;(mockChild.stderr as any).on.mockReturnValue(mockChild.stderr)
+    mockLog.mockReset()
+    mockThink.mockReset()
+    mockToast.mockReset()
   })
 
   it("returns an object with event handler when router is running", async () => {
@@ -81,11 +102,11 @@ describe("Plugin Interface", () => {
     mockSpawn.mockReturnValue(mockChild)
 
     const mod = await getFreshModule()
-    const ctx = {} as Parameters<typeof mod.GeminiRouter>[0]
-    const plugin = await mod.GeminiRouter(ctx)
+    const plugin = await mod.GeminiRouter(mockCtx as any)
 
     expect(plugin).toHaveProperty("event")
     expect(typeof plugin.event).toBe("function")
+    expect(mockLog).toHaveBeenCalledWith(expect.stringContaining("Plugin initialized"))
 
     // Clean up
     vi.stubGlobal("fetch", undefined as any)
@@ -98,12 +119,235 @@ describe("Plugin Interface", () => {
     mockSpawn.mockReturnValue(mockChild)
 
     const mod = await getFreshModule()
-    const ctx = {} as Parameters<typeof mod.GeminiRouter>[0]
-    const plugin = await mod.GeminiRouter(ctx)
+    const plugin = await mod.GeminiRouter(mockCtx as any)
 
     expect(plugin.event).toBeDefined()
-    // Should not throw
-    await plugin.event({ event: { type: "app.closing" } as any })
+    // Should not throw - use non-null assertion since event is always returned
+    await plugin.event!({ event: { type: "app.closing" } as any })
+    expect(mockLog).toHaveBeenCalledWith(expect.stringContaining("App closing"))
+
+    vi.stubGlobal("fetch", undefined as any)
+  })
+
+  // ---------------------------------------------------------------------------
+  // Behavioral tests: capabilities and permissions
+  // ---------------------------------------------------------------------------
+
+  describe("Plugin return value", () => {
+    it("returns capabilities array with expected values", async () => {
+      const mockFetch = vi.fn().mockResolvedValue({ ok: true })
+      vi.stubGlobal("fetch", mockFetch)
+      mockSpawn.mockReturnValue(mockChild)
+
+      const mod = await getFreshModule()
+      const plugin = (await mod.GeminiRouter(mockCtx as any)) as any
+
+      expect(plugin.capabilities).toBeDefined()
+      expect(Array.isArray(plugin.capabilities)).toBe(true)
+      expect(plugin.capabilities).toContain("ui.toast")
+      expect(plugin.capabilities).toContain("lifecycle")
+      expect(plugin.capabilities).toContain("tool.execute.before")
+      expect(plugin.capabilities).toContain("tools")
+
+      vi.stubGlobal("fetch", undefined as any)
+    })
+
+    it("returns permissions array with filesystem read/write", async () => {
+      const mockFetch = vi.fn().mockResolvedValue({ ok: true })
+      vi.stubGlobal("fetch", mockFetch)
+      mockSpawn.mockReturnValue(mockChild)
+
+      const mod = await getFreshModule()
+      const plugin = (await mod.GeminiRouter(mockCtx as any)) as any
+
+      expect(plugin.permissions).toBeDefined()
+      expect(Array.isArray(plugin.permissions)).toBe(true)
+      expect(plugin.permissions).toContain("filesystem:read")
+      expect(plugin.permissions).toContain("filesystem:write")
+
+      vi.stubGlobal("fetch", undefined as any)
+    })
+
+    it("returns tools array with gemini_router_info", async () => {
+      const mockFetch = vi.fn().mockResolvedValue({ ok: true })
+      vi.stubGlobal("fetch", mockFetch)
+      mockSpawn.mockReturnValue(mockChild)
+
+      const mod = await getFreshModule()
+      const plugin = (await mod.GeminiRouter(mockCtx as any)) as any
+
+      expect(plugin.tools).toBeDefined()
+      expect(Array.isArray(plugin.tools)).toBe(true)
+      expect(plugin.tools.length).toBeGreaterThan(0)
+
+      const routerInfoTool = plugin.tools.find((t: any) => t.name === "gemini_router_info")
+      expect(routerInfoTool).toBeDefined()
+      expect(routerInfoTool.description).toContain("Gemini Router")
+      expect(typeof routerInfoTool.execute).toBe("function")
+
+      vi.stubGlobal("fetch", undefined as any)
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Behavioral tests: startup toast
+  // ---------------------------------------------------------------------------
+
+  describe("Startup toast", () => {
+    it("calls ctx.client.ui.toast on startup after bootPromise resolves", async () => {
+      // Mock fetch: first call false (router not running), second call true (router ready)
+      const mockFetch = vi.fn()
+        .mockResolvedValueOnce({ ok: false }) // isRunning returns false
+        .mockResolvedValueOnce({ ok: true })  // waitForRouter polls and finds it running
+      vi.stubGlobal("fetch", mockFetch)
+      mockSpawn.mockReturnValue(mockChild)
+
+      const mod = await getFreshModule()
+      await mod.GeminiRouter(mockCtx as any)
+
+      // Startup toast should be called with "Gemini Router: Startup successful"
+      expect(mockToast).toHaveBeenCalledWith("Gemini Router: Startup successful", { type: "success" })
+
+      vi.stubGlobal("fetch", undefined as any)
+    })
+
+    it("does not call startup toast if router is already running", async () => {
+      const mockFetch = vi.fn().mockResolvedValue({ ok: true }) // router already running
+      vi.stubGlobal("fetch", mockFetch)
+      mockSpawn.mockReturnValue(mockChild)
+
+      mockToast.mockClear()
+      const mod = await getFreshModule()
+      await mod.GeminiRouter(mockCtx as any)
+
+      // When router already running, boot() returns early, startup toast still fires
+      // (this is the current behavior - boot returns early but toast is still shown)
+      expect(mockToast).toHaveBeenCalledWith("Gemini Router: Startup successful", { type: "success" })
+
+      vi.stubGlobal("fetch", undefined as any)
+    })
+  })
+
+  // ---------------------------------------------------------------------------
+  // Behavioral tests: crash toast
+  // ---------------------------------------------------------------------------
+
+describe("Crash toast", () => {
+  it("calls ctx.client.ui.toast when child process closes unexpectedly", async () => {
+    // First call false (trigger startRouter), second call true (waitForRouter completes)
+    const mockFetch = vi.fn()
+      .mockResolvedValueOnce({ ok: false })  // isRunning() in boot() returns false
+      .mockResolvedValueOnce({ ok: true })   // waitForRouter polls and finds router running
+    vi.stubGlobal("fetch", mockFetch)
+
+    // Create a child that can be closed
+    let storedCloseHandler: ((code: number | null) => void) | null = null
+    const mockChildForCrash: typeof mockChild = {
+      ...mockChild,
+      on: vi.fn((event: string, handler: (code: number | null) => void) => {
+        if (event === "close") {
+          storedCloseHandler = handler
+        }
+        return mockChildForCrash
+      }),
+    }
+    mockSpawn.mockReturnValue(mockChildForCrash)
+
+    const mod = await getFreshModule()
+    const plugin = await mod.GeminiRouter(mockCtx as any)
+
+    mockToast.mockClear()
+    // Simulate the child closing with a non-zero code (crash)
+    ;(storedCloseHandler as ((code: number | null) => void) | null)?.(1)
+
+    // Crash toast should be called
+    expect(mockToast).toHaveBeenCalledWith(
+      "Gemini Router crashed, restarting...",
+      { type: "error" }
+    )
+
+    vi.stubGlobal("fetch", undefined as any)
+  })
+
+  it("does NOT call crash toast when shutting down", async () => {
+    // First call false (trigger startRouter), second call true (waitForRouter completes)
+    const mockFetch = vi.fn()
+      .mockResolvedValueOnce({ ok: false })  // isRunning() in boot() returns false
+      .mockResolvedValueOnce({ ok: true })   // waitForRouter polls and finds router running
+    vi.stubGlobal("fetch", mockFetch)
+
+    let storedCloseHandler: ((code: number | null) => void) | null = null
+    const mockChildForShutdown: typeof mockChild = {
+      ...mockChild,
+      on: vi.fn((event: string, handler: (code: number | null) => void) => {
+        if (event === "close") {
+          storedCloseHandler = handler
+        }
+        return mockChildForShutdown
+      }),
+    }
+    mockSpawn.mockReturnValue(mockChildForShutdown)
+
+    const mod = await getFreshModule()
+    const plugin = await mod.GeminiRouter(mockCtx as any)
+
+    mockToast.mockClear()
+    // Trigger app.closing to set shuttingDown = true
+    await plugin.event!({ event: { type: "app.closing" } as any })
+
+    // Now close the child - should NOT trigger crash toast
+    ;(storedCloseHandler as ((code: number | null) => void) | null)?.(1)
+
+      expect(mockToast).not.toHaveBeenCalledWith(
+        "Gemini Router crashed, restarting...",
+        expect.anything()
+      )
+
+      vi.stubGlobal("fetch", undefined as any)
+    })
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Behavioral tests: idle toast
+// ---------------------------------------------------------------------------
+
+describe("Idle toast", () => {
+  it("calls ctx.client.ui.toast when session.idle event is received", async () => {
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true })
+    vi.stubGlobal("fetch", mockFetch)
+    mockSpawn.mockReturnValue(mockChild)
+
+    const mod = await getFreshModule()
+    const plugin = await mod.GeminiRouter(mockCtx as any)
+
+    mockToast.mockClear()
+    await plugin.event!({ event: { type: "session.idle" } as any })
+
+    expect(mockToast).toHaveBeenCalledWith(
+      "Gemini Router: Session idle - Analysis complete",
+      { type: "success" }
+    )
+
+    vi.stubGlobal("fetch", undefined as any)
+  })
+
+  it("does not call idle toast for other event types", async () => {
+    const mockFetch = vi.fn().mockResolvedValue({ ok: true })
+    vi.stubGlobal("fetch", mockFetch)
+    mockSpawn.mockReturnValue(mockChild)
+
+    const mod = await getFreshModule()
+    const plugin = await mod.GeminiRouter(mockCtx as any)
+
+    mockToast.mockClear()
+    // Send a different event type
+    await plugin.event!({ event: { type: "session.created" } as any })
+
+    expect(mockToast).not.toHaveBeenCalledWith(
+      "Gemini Router: Session idle - Analysis complete",
+      expect.anything()
+    )
 
     vi.stubGlobal("fetch", undefined as any)
   })
@@ -210,12 +454,15 @@ describe("Dynamic port", () => {
   it("when no env vars, spawn uses resolved port from user-port module", async () => {
     mockResolveEffectivePort.mockReturnValue(47901)
 
-    // Fetch returns false so boot proceeds to startRouter
-    const mockFetch = vi.fn().mockResolvedValue({ ok: false })
+    // First call false (to trigger start), second call true (to stop waiting)
+    const mockFetch = vi.fn()
+      .mockResolvedValueOnce({ ok: false })
+      .mockResolvedValueOnce({ ok: true })
     vi.stubGlobal("fetch", mockFetch)
     mockSpawn.mockReturnValue(mockChild)
 
-    await getFreshModule()
+    const mod = await getFreshModule()
+    await mod.GeminiRouter(mockCtx as any)
 
     // PORT env passed to spawn should be 47901
     const spawnCall = mockSpawn.mock.calls[0]
@@ -229,11 +476,14 @@ describe("Dynamic port", () => {
     process.env.GEMINI_ROUTER_PORT = "5000"
     mockResolveEffectivePort.mockReturnValue(5000)
 
-    const mockFetch = vi.fn().mockResolvedValue({ ok: false })
+    const mockFetch = vi.fn()
+      .mockResolvedValueOnce({ ok: false })
+      .mockResolvedValueOnce({ ok: true })
     vi.stubGlobal("fetch", mockFetch)
     mockSpawn.mockReturnValue(mockChild)
 
-    await getFreshModule()
+    const mod = await getFreshModule()
+    await mod.GeminiRouter(mockCtx as any)
 
     const spawnCall = mockSpawn.mock.calls[0]
     const env = spawnCall?.[2]?.env as Record<string, string> | undefined

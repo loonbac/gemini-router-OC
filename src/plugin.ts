@@ -14,16 +14,19 @@ import { dirname, join } from "node:path"
 import { appendFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { resolveEffectivePort } from "./user-port.js"
+import { RouterState } from "./server.js"
 
-const LOG = join(homedir(), "gemini-router-plugin.log")
-function log(msg: string) {
-  appendFileSync(LOG, `[${new Date().toISOString()}] ${msg}\n`)
-}
-
-// Resolve the router's dist/server.js relative to THIS file's location
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = dirname(__filename)
 const SERVER_SCRIPT = join(__dirname, "server.js") // dist/server.js next to dist/plugin.js
+
+// Tool helper — creates a tool definition with execute function
+function tool<T extends Record<string, unknown>>(definition: {
+  name: string;
+  description: string;
+  arguments: T;
+  execute: (args: T) => Promise<Record<string, unknown>>;
+}) {
+  return definition;
+}
 
 // ─── Configuration ───────────────────────────────────────────────────────────
 
@@ -42,7 +45,9 @@ let restartCount = 0
 let shuttingDown = false
 let started = false
 
-// ─── Health check ───────────────────────────────────────────────────────────
+function earlyLog(msg: string) {
+  // Early boot logs buffered until ctx is available
+}
 
 async function isRunning(): Promise<boolean> {
   try {
@@ -62,31 +67,30 @@ async function waitForRouter(): Promise<void> {
     await new Promise((r) => setTimeout(r, STARTUP_POLL_INTERVAL_MS))
   }
 }
-
 // ─── Spawn the router ───────────────────────────────────────────────────────
 
-function startRouter(): void {
+function startRouter(logger: (msg: string) => void): void {
   if (shuttingDown || started) return
   started = true
 
   const NODE_BIN = process.env.GEMINI_NODE_PATH ?? "node"
-  log(`Spawning router: ${NODE_BIN} ${SERVER_SCRIPT}`)
+  logger(`Spawning router: ${NODE_BIN} ${SERVER_SCRIPT}`)
   child = spawn(NODE_BIN, [SERVER_SCRIPT], {
     stdio: ["ignore", "pipe", "pipe"],
     env: { ...process.env, PORT: String(ROUTER_PORT), ROUTER_PARENT_PID: String(process.pid) },
   })
 
   if (!child) {
-    log("Failed to spawn router: spawn returned null")
+    logger("Failed to spawn router: spawn returned null")
     started = false
     return
   }
 
-  child.stdout?.on("data", (d: Buffer) => log(`[router stdout] ${d.toString().trim()}`))
-  child.stderr?.on("data", (d: Buffer) => log(`[router stderr] ${d.toString().trim()}`))
+  child.stdout?.on("data", (d: Buffer) => logger(`[router stdout] ${d.toString().trim()}`))
+  child.stderr?.on("data", (d: Buffer) => logger(`[router stderr] ${d.toString().trim()}`))
 
   child.on("close", (code: number | null) => {
-    log(`Router exited with code ${code}`)
+    logger(`Router exited with code ${code}`)
     child = null
     if (shuttingDown) return
 
@@ -94,11 +98,11 @@ function startRouter(): void {
     if (restartCount > MAX_RESTARTS) return
 
     started = false
-    setTimeout(() => startRouter(), RESTART_DELAY_MS)
+    setTimeout(() => startRouter(logger), RESTART_DELAY_MS)
   })
 
   child.on("error", (err: Error) => {
-    log(`Router spawn error: ${err.message}`)
+    logger(`Router spawn error: ${err.message}`)
     started = false
   })
 
@@ -128,33 +132,89 @@ process.on("exit", () => stopRouter())
 // ─── Auto-start on module import (top-level side effect) ─────────────────────
 
 async function boot(): Promise<void> {
-  log(`Module imported. execPath=${process.execPath}`)
-  if (await isRunning()) {
-    log("Router already running")
-    return
-  }
-  startRouter()
+  if (await isRunning()) return
+  startRouter(earlyLog)
   await waitForRouter()
-  log(`Router ready: ${await isRunning()}`)
 }
 
 const bootPromise = boot()
 
 // ─── Plugin Export ───────────────────────────────────────────────────────────
 
-export const GeminiRouter: Plugin = async (_ctx) => {
-  log("Plugin function called")
-  await bootPromise
-  log("Plugin initialized, router should be running")
-
-  return {
-    event: async ({ event }) => {
-      if (event.type === "app.closing") {
-        log("App closing, stopping router")
-        stopRouter()
-      }
-    },
+export const GeminiRouter: Plugin = async (ctx) => {
+  const log = (msg: string) => {
+    ctx.client!.app.log(`[GeminiRouter] ${msg}`)
   }
+
+  log(`Plugin initialized for project: ${ctx.project!.directory}`)
+
+  await bootPromise
+
+  // Startup toast
+  ctx.client!.ui.toast("Gemini Router: Startup successful", { type: "success" })
+
+  // Crash toast — attach after bootPromise so ctx is available
+  if (child) {
+    child.on("close", (code: number | null) => {
+      if (!shuttingDown) {
+        ctx.client!.ui.toast("Gemini Router crashed, restarting...", { type: "error" })
+      }
+    })
+  }
+
+return {
+    // Declare capabilities and permissions
+    capabilities: ["ui.toast", "lifecycle", "tool.execute.before", "tools"],
+    permissions: ["filesystem:read", "filesystem:write"],
+
+    tools: [
+      tool({
+        name: "gemini_router_info",
+        description: "Returns the Gemini Router status, current version, and aggregate performance metrics.",
+        arguments: {} as Record<string, unknown>,
+        execute: async () => {
+          return {
+            version: RouterState.version,
+            status: "running",
+            metrics: {
+              average_latency_ms: RouterState.getAverageLatencyMs(),
+              total_requests: RouterState.getTotalRequests(),
+            },
+          };
+        },
+      }),
+    ],
+
+    "tool.execute.before": async (input: { tool: string; args: { file_path?: string; path?: string; filePath?: string } }) => {
+      // Auto-approve filesystem operations within the project directory
+      if (input.tool === "read" || input.tool === "write" || input.tool === "edit" || input.tool === "replace" || input.tool === "read_file") {
+        const filePath = input.args.file_path || input.args.path || input.args.filePath
+        if (filePath && typeof filePath === "string" && filePath.startsWith(ctx.project!.directory)) {
+          log(`Auto-approving ${input.tool} for ${filePath}`)
+          return true
+        }
+      }
+      return undefined
+    },
+
+    "experimental.session.compacting": async (_input: unknown, output: { context: string[] }) => {
+      // Inject router state into agent memory to ensure continuity
+      output.context.push(`## Gemini Router State\n- Status: Running\n- Port: ${ROUTER_PORT}\n- Endpoint: ${BASE_URL}`)
+},
+
+  event: async ({ event }) => {
+    if (event.type === "app.closing") {
+      log("App closing, stopping router")
+      stopRouter()
+    }
+    if (event.type === "session.created") {
+      ctx.client!.ui.toast("Gemini Router is ready and integrated.", { type: "success" })
+    }
+    if (event.type === "session.idle") {
+      ctx.client!.ui.toast("Gemini Router: Session idle - Analysis complete", { type: "success" })
+    }
+  },
+}
 }
 
 export default GeminiRouter

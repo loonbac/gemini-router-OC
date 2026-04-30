@@ -5,8 +5,6 @@
 
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { serve } from "@hono/node-server";
-import http from "node:http";
 import { spawnBridge, resolveTimeout } from "./gemini-bridge.js";
 import { spawnStreamBridge } from "./gemini-bridge.js";
 import {
@@ -78,6 +76,16 @@ export const RouterState = {
   getTotalRequests(): number {
     return MetricsTracker.totalRequests;
   },
+
+  getUptimeMs(): number {
+    return Date.now() - this.startTime;
+  },
+
+  reset() {
+    MetricsTracker.reset();
+    this.startTime = Date.now();
+    this.activeRequests = 0;
+  },
 };
 
 const PORT = resolveEffectivePort();
@@ -88,7 +96,17 @@ const DEFAULT_TIMEOUT_MS = resolveTimeout();
 // ---------------------------------------------------------------------------
 
 app.get("/health", (c: Context) => {
-  return c.json({ status: "ok", port: PORT });
+  return c.json({
+    status: "ok",
+    version: RouterState.version,
+    port: PORT,
+    uptime_ms: RouterState.getUptimeMs(),
+    active_requests: RouterState.activeRequests,
+    metrics: {
+      total_requests: RouterState.getTotalRequests(),
+      average_latency_ms: RouterState.getAverageLatencyMs(),
+    },
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -123,7 +141,7 @@ function jsonError(c: Context, status: 400 | 502 | 504, message: string) {
 // Active process tracking — for graceful shutdown
 // ---------------------------------------------------------------------------
 
-const activeProcesses: Set<() => void> = new Set();
+export const activeProcesses: Set<() => void> = new Set();
 
 function registerProcess(killFn: () => void) {
   activeProcesses.add(killFn);
@@ -329,61 +347,7 @@ function handleStreaming(c: Context, request: OpenAIChatRequest, prompt: string)
 }
 
 // ---------------------------------------------------------------------------
-// Graceful shutdown
+// Export app — server startup moved to src/index.ts
 // ---------------------------------------------------------------------------
 
-async function shutdown() {
-  for (const kill of activeProcesses) kill();
-  activeProcesses.clear();
-}
-
-process.on("SIGTERM", async () => { await shutdown(); process.exit(0); });
-process.on("SIGINT", async () => { await shutdown(); process.exit(0); });
-
-// Auto-shutdown when parent process dies
-const parentPid = process.env.ROUTER_PARENT_PID;
-if (parentPid) {
-  setInterval(() => {
-    try { process.kill(Number(parentPid), 0); } catch { process.exit(0); }
-  }, 3000);
-}
-
-// ---------------------------------------------------------------------------
-// Health probe for EADDRINUSE — check if the process on that port is ours
-// ---------------------------------------------------------------------------
-
-async function probeHealth(port: number): Promise<boolean> {
-  return new Promise((resolve) => {
-    const req = http.get(`http://127.0.0.1:${port}/health`, (res) => {
-      resolve(res.statusCode === 200);
-    });
-    req.on("error", () => resolve(false));
-    req.setTimeout(1000, () => {
-      req.destroy();
-      resolve(false);
-    });
-  });
-}
-
-// ---------------------------------------------------------------------------
-// Start — handle EADDRINUSE gracefully
-// ---------------------------------------------------------------------------
-
-if (process.env.NODE_ENV !== "test") {
-  const server = serve({ fetch: app.fetch, port: PORT }, () => {});
-
-  server.on("error", async (err: NodeJS.ErrnoException) => {
-    if (err.code === "EADDRINUSE") {
-      // Probe the port's /health endpoint
-      const isOurProcess = await probeHealth(PORT);
-      if (isOurProcess) {
-        // Another instance of our router is running — clean exit
-        process.exit(0);
-      }
-      // A different process owns the port — fail with error
-      logger.error(`Port ${PORT} is occupied by a non-router process. Exiting with error.`);
-      process.exit(1);
-    }
-    process.exit(1);
-  });
-}
+export { app };

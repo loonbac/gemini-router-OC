@@ -45,6 +45,8 @@ function log(level: LogLevel, msg: string, meta?: Record<string, unknown>): void
 
   switch (level) {
     case "debug":
+      console.debug(json);
+      break;
     case "info":
       console.info(json);
       break;
@@ -99,9 +101,9 @@ export const requestLogger: MiddlewareHandler = async (c, next) => {
   const durationMs = Date.now() - start;
   const status = c.res.status;
 
-  const level: LogLevel = status >= 500 ? "error" : status >= 400 ? "warn" : "info";
+  const level: LogLevel = status >= 500 ? "error" : status >= 400 ? "warn" : "debug";
 
-  const logFn = level === "error" ? logger.error.bind(logger) : level === "warn" ? logger.warn.bind(logger) : logger.info.bind(logger);
+  const logFn = level === "error" ? logger.error.bind(logger) : level === "warn" ? logger.warn.bind(logger) : level === "debug" ? logger.debug.bind(logger) : logger.info.bind(logger);
 
   logFn("request completed", {
     method: c.req.method,

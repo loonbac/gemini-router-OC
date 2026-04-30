@@ -14,9 +14,8 @@ import { dirname, join } from "node:path"
 import { appendFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { resolveEffectivePort } from "./user-port.js"
-import { RouterState } from "./server.js"
 
-const SERVER_SCRIPT = join(__dirname, "server.js") // dist/server.js next to dist/plugin.js
+const SERVER_SCRIPT = join(__dirname, "index.js") // dist/index.js next to dist/plugin.js
 
 // Tool helper — creates a tool definition with execute function
 function tool<T extends Record<string, unknown>>(definition: {
@@ -173,14 +172,43 @@ return {
         description: "Returns the Gemini Router status, current version, and aggregate performance metrics.",
         arguments: {} as Record<string, unknown>,
         execute: async () => {
-          return {
-            version: RouterState.version,
-            status: "running",
-            metrics: {
-              average_latency_ms: RouterState.getAverageLatencyMs(),
-              total_requests: RouterState.getTotalRequests(),
-            },
-          };
+          try {
+            const res = await fetch(`http://127.0.0.1:${ROUTER_PORT}/health`, {
+              signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS),
+            });
+            if (!res.ok) {
+              return {
+                version: "unknown",
+                status: "unreachable",
+                metrics: {
+                  average_latency_ms: 0,
+                  total_requests: 0,
+                },
+              };
+            }
+            const health = await res.json() as {
+              version: string;
+              uptime_ms: number;
+              active_requests: number;
+              metrics: { total_requests: number; average_latency_ms: number };
+            };
+            return {
+              version: health.version,
+              status: "running",
+              uptime_ms: health.uptime_ms,
+              active_requests: health.active_requests,
+              metrics: health.metrics,
+            };
+          } catch {
+            return {
+              version: "unknown",
+              status: "unreachable",
+              metrics: {
+                average_latency_ms: 0,
+                total_requests: 0,
+              },
+            };
+          }
         },
       }),
     ],

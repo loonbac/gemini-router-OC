@@ -365,9 +365,9 @@ describe("spawn API usage", () => {
     mockChild.on.mockReturnValue(mockChild)
   })
 
-  it("spawns process with server.js path", () => {
+  it("spawns process with index.js path", () => {
     // Verify spawn is called with expected arguments
-    const serverScript = "dist/server.js"
+    const serverScript = "dist/index.js"
     mockSpawn(process.execPath, [serverScript], {
       stdio: ["ignore", "ignore", "ignore"],
       env: { ...process.env, PORT: "4789" },
@@ -376,7 +376,7 @@ describe("spawn API usage", () => {
     expect(mockSpawn).toHaveBeenCalledTimes(1)
     expect(mockSpawn).toHaveBeenCalledWith(
       process.execPath,
-      expect.arrayContaining([expect.stringContaining("server.js")]),
+      expect.arrayContaining([expect.stringContaining("index.js")]),
       expect.objectContaining({
         stdio: expect.arrayContaining(["ignore"]),
       }),

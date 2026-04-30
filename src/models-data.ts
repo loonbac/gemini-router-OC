@@ -17,6 +17,33 @@ export interface ModelMetadata {
 
 export const modelsRegistry: ModelMetadata[] = [
   {
+    id: "gemini-3-pro",
+    object: "model",
+    created: Math.floor(Date.now() / 1000),
+    owned_by: "google",
+    context_window: 1048576,
+    max_output_tokens: 8192,
+    capabilities: ["chat", "streaming", "function-calling", "vision"],
+  },
+  {
+    id: "gemini-3-flash",
+    object: "model",
+    created: Math.floor(Date.now() / 1000),
+    owned_by: "google",
+    context_window: 1048576,
+    max_output_tokens: 8192,
+    capabilities: ["chat", "streaming", "function-calling", "vision"],
+  },
+  {
+    id: "gemini-3.1-flash-lite",
+    object: "model",
+    created: Math.floor(Date.now() / 1000),
+    owned_by: "google",
+    context_window: 65536,
+    max_output_tokens: 4096,
+    capabilities: ["chat", "streaming", "function-calling"],
+  },
+  {
     id: "gemini-3.1-pro-preview",
     object: "model",
     created: Math.floor(Date.now() / 1000),
@@ -42,6 +69,24 @@ export const modelsRegistry: ModelMetadata[] = [
     context_window: 200000,
     max_output_tokens: 8192,
     capabilities: ["chat", "streaming", "function-calling"],
+  },
+  {
+    id: "gemini-1.5-pro",
+    object: "model",
+    created: Math.floor(Date.now() / 1000),
+    owned_by: "google",
+    context_window: 1048576,
+    max_output_tokens: 8192,
+    capabilities: ["chat", "streaming", "function-calling", "vision"],
+  },
+  {
+    id: "gemini-1.5-flash",
+    object: "model",
+    created: Math.floor(Date.now() / 1000),
+    owned_by: "google",
+    context_window: 1048576,
+    max_output_tokens: 8192,
+    capabilities: ["chat", "streaming", "function-calling", "vision"],
   },
   {
     id: "gemini-2.5-pro",

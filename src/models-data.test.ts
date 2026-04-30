@@ -11,8 +11,8 @@ describe("modelsRegistry", () => {
     expect(modelsRegistry.length).toBeGreaterThan(0);
   });
 
-  it("contains all 6 supported models", () => {
-    expect(modelsRegistry).toHaveLength(6);
+  it("contains all 11 supported models", () => {
+    expect(modelsRegistry).toHaveLength(11);
   });
 
   it("each model has required metadata fields", () => {
@@ -64,5 +64,25 @@ describe("modelsRegistry", () => {
     expect(lite).toBeDefined();
     expect(lite!.context_window).toBe(65000);
     expect(lite!.max_output_tokens).toBe(4096);
+  });
+
+  it("contains new gemini 3 and 1.5 aliases with requested context windows", () => {
+    const modelIds = [
+      "gemini-3-pro",
+      "gemini-3-flash",
+      "gemini-3.1-flash-lite",
+      "gemini-1.5-pro",
+      "gemini-1.5-flash",
+    ];
+
+    for (const id of modelIds) {
+      expect(modelsRegistry.find((m) => m.id === id)).toBeDefined();
+    }
+
+    expect(modelsRegistry.find((m) => m.id === "gemini-3-pro")!.context_window).toBe(1048576);
+    expect(modelsRegistry.find((m) => m.id === "gemini-3-flash")!.context_window).toBe(1048576);
+    expect(modelsRegistry.find((m) => m.id === "gemini-3.1-flash-lite")!.context_window).toBe(65536);
+    expect(modelsRegistry.find((m) => m.id === "gemini-1.5-pro")!.context_window).toBe(1048576);
+    expect(modelsRegistry.find((m) => m.id === "gemini-1.5-flash")!.context_window).toBe(1048576);
   });
 });
